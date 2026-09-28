@@ -397,7 +397,10 @@ function setPeriod(p){
   $('tblTitle').textContent = p==='all' ? 'Jugadores — acumulado del partido hasta este momento'
                             : `Jugadores — solo ${p==='1'?'1er':'2do'} tiempo`;
   drawTimeline();
-  render(tNow, true);
+  // si el video está fuera del tiempo elegido, lo lleva al kickoff de ese tiempo
+  if (p==='1' && (tNow < D.kick1-60 || tNow > END1+30)) seekGps(D.kick1-3);
+  else if (p==='2' && tNow < D.kick2-60) seekGps(D.kick2-3);
+  else render(tNow, true);
 }
 document.querySelectorAll('#perSeg button').forEach(b=>b.onclick=()=>setPeriod(b.dataset.p));
 
