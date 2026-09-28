@@ -11,7 +11,7 @@
   --text:#0b0b0b; --text-2:#52514e; --muted:#8a8984;
   --accent:#2a78d6; --accent-2:#eb6834; --grid:#e6e5e0;
   --pitch:#e8f1e6; --pitch-line:#ffffff; --pitch-edge:#b9cdb4;
-  --team:#6b6a66; --shade:rgba(0,0,0,.04);
+  --team:#6b6a66; --dot:#1f4fa8; --shade:rgba(0,0,0,.04);
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
@@ -20,7 +20,7 @@
     --text:#ffffff; --text-2:#c3c2b7; --muted:#8a8984;
     --accent:#3987e5; --accent-2:#d95926; --grid:#2c2c29;
     --pitch:#1d2a1d; --pitch-line:#4d6b4b; --pitch-edge:#2f422e;
-    --team:#a8a79f; --shade:rgba(255,255,255,.04);
+    --team:#a8a79f; --dot:#2f64c9; --shade:rgba(255,255,255,.04);
   }
 }
 :root[data-theme="dark"]{
@@ -29,7 +29,7 @@
   --text:#ffffff; --text-2:#c3c2b7; --muted:#8a8984;
   --accent:#3987e5; --accent-2:#d95926; --grid:#2c2c29;
   --pitch:#1d2a1d; --pitch-line:#4d6b4b; --pitch-edge:#2f422e;
-  --team:#a8a79f; --shade:rgba(255,255,255,.04);
+  --team:#a8a79f; --dot:#2f64c9; --shade:rgba(255,255,255,.04);
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
@@ -51,7 +51,7 @@ button:hover{border-color:var(--muted)}
 .video > div,.video iframe{position:absolute;inset:0;width:100%;height:100%}
 .novideo{position:absolute;inset:0;display:none;align-items:center;justify-content:center;text-align:center;color:#ddd;padding:24px;font-size:14px;line-height:1.5}
 .col{display:flex;flex-direction:column;gap:14px;min-width:0}
-#pitch{width:100%;height:auto;display:block}
+#pitch{width:100%;height:auto;display:block;border-radius:8px}
 .legend{display:flex;gap:14px;font-size:12px;color:var(--text-2);flex-wrap:wrap}
 .legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
 .legend i.area{height:10px;opacity:.5}
@@ -128,7 +128,7 @@ details.sync summary{cursor:pointer;color:var(--text-2);font-size:13px}
 
   <div class="col">
     <div class="card">
-      <h2>Posición en cancha <span class="r" id="pitchNote">tocá un jugador · rastro 8 s</span></h2>
+      <h2>Posición en cancha <span class="r" id="pitchNote">tocá un jugador · rastro 8 s <button id="lblBtn" style="margin-left:8px;padding:2px 8px;font-size:12px">Ver códigos</button></span></h2>
       <svg id="pitch" viewBox="-62 -40 124 80"></svg>
       <div class="shape" id="shape"></div>
     </div>
@@ -242,31 +242,53 @@ const el = (tag, attrs={}, parent) => { const e=document.createElementNS(NS,tag)
 
 // ---------- cancha ----------
 const pitch = $('pitch');
+let labelMode = store.get('labels','name');
 function drawPitch(){
   pitch.innerHTML='';
-  el('rect',{x:-62,y:-40,width:124,height:80,fill:'var(--pitch-edge)'},pitch);
-  el('rect',{x:-60,y:-35,width:120,height:70,fill:'var(--pitch)'},pitch);
-  const L = (x1,y1,x2,y2,dash) => el('line',{x1,y1,x2,y2,stroke:'var(--pitch-line)','stroke-width':.35,'stroke-dasharray':dash||''},pitch);
-  L(-60,-35,60,-35); L(-60,35,60,35); L(-60,-35,-60,35); L(60,-35,60,35);
-  L(-50,-35,-50,35); L(50,-35,50,35); L(0,-35,0,35);
-  L(-28,-35,-28,35); L(28,-35,28,35);
-  L(-10,-35,-10,35,'1.5 1.5'); L(10,-35,10,35,'1.5 1.5');
-  L(-45,-35,-45,35,'1 2'); L(45,-35,45,35,'1 2');
-  L(-50,-30,50,-30,'1 3'); L(-50,30,50,30,'1 3'); L(-50,-20,50,-20,'1 3'); L(-50,20,50,20,'1 3');
-  const lab=(x,t)=>{ const e=el('text',{x,y:-36.4,'text-anchor':'middle',style:'font-size:2.2px'},pitch); e.textContent=t; };
-  lab(-50,'in-goal'); lab(-28,'22'); lab(0,'½'); lab(28,'22'); lab(50,'in-goal');
-  pitch.trail = el('polyline',{fill:'none',stroke:'var(--accent-2)','stroke-width':.6,'stroke-linecap':'round','stroke-linejoin':'round',opacity:.8},pitch);
+  const W='#ffffff';
+  el('rect',{x:-62,y:-40,width:124,height:80,fill:'#245c36'},pitch);
+  for (let k=0;k<26;k++) el('rect',{x:-65+k*5,y:-40,width:5,height:80,fill:k%2?'#2c6e40':'#33794a'},pitch);
+  const L = (x1,y1,x2,y2,w,dash) => el('line',{x1,y1,x2,y2,stroke:W,'stroke-width':w||.45,'stroke-dasharray':dash||'','stroke-linecap':'butt'},pitch);
+  el('rect',{x:-61.2,y:-36.2,width:122.4,height:72.4,fill:'none',stroke:W,'stroke-width':.25,opacity:.8},pitch);  // borde exterior
+  el('rect',{x:-60,y:-35,width:120,height:70,fill:'none',stroke:W,'stroke-width':.55},pitch);            // pelota muerta + laterales
+  [-50,50,-28,28,0].forEach(x=>L(x,-35,x,35,.45));                                                        // try, 22, mitad
+  [-45,45,-10,10].forEach(x=>L(x,-35,x,35,.4,'2.4 4.2'));                                                  // 5 m y 10 m discontinuas
+  // marcas de 5 m y 15 m desde el lateral sobre cada línea
+  [-30,-20,20,30].forEach(y=>{
+    [-28,-10,0,10,28].forEach(x=>L(x-1.2,y,x+1.2,y,.4));
+    L(-45,y,-43.6,y,.4); L(45,y,43.6,y,.4);
+  });
+  [-50,50].forEach(x=>{ L(x+(x<0?0:-1.6),-30,x+(x<0?1.6:0),-30,.4); });
+  // postes (H)
+  [-1,1].forEach(s=>{
+    const xa=s*58, xb=s*51.5;
+    L(xa,-4.6,xb,-7.4,.7); L(xa,6.2,xb,3.4,.7);
+    const xm=s*54.75; L(xm,-6.0,xm,4.8,.7);
+  });
+  pitch.trail = el('polyline',{fill:'none',stroke:'#ffb347','stroke-width':.6,'stroke-linecap':'round','stroke-linejoin':'round',opacity:.9},pitch);
   pitch.dots = P.map((p,i)=>{
     const g = el('g',{style:'cursor:pointer'},pitch);
-    el('circle',{r:2.2,fill:'var(--team)',stroke:'var(--pitch)','stroke-width':.45},g);
-    const c = el('text',{'text-anchor':'middle','dy':.62,style:'fill:#fff;font-weight:700;font-size:1.65px;pointer-events:none'},g);
+    el('circle',{r:1.5,fill:'var(--dot)',stroke:'#fff','stroke-width':.3},g);
+    const c = el('text',{'text-anchor':'middle','dy':.55,style:'fill:#fff;font-weight:700;font-size:1.5px;pointer-events:none'},g);
     c.textContent = p.code;
-    const t = el('text',{'text-anchor':'middle','dy':-3.1,style:'fill:var(--text);font-weight:600;font-size:2.6px;display:none'},g);
-    t.textContent = p.name;
+    const t = el('text',{'text-anchor':'middle','dy':-2.3,style:'fill:#fff;font-weight:700;font-size:2.1px;paint-order:stroke;stroke:rgba(0,0,0,.55);stroke-width:.45px;pointer-events:none'},g);
+    t.textContent = shortName(p.name);
     const tt = el('title',{},g); tt.textContent = p.name;
     g.addEventListener('click',()=>select(i));
     return g;
   });
+  applyLabels();
+}
+function shortName(n){ const w=n.split(' '); return w.length>1 ? w[0]+' '+w[w.length-1][0]+'.' : n; }
+function applyLabels(){
+  pitch.dots.forEach((g,j)=>{
+    const isSel=j===sel, codes=labelMode==='code';
+    g.firstChild.setAttribute('r', codes ? (isSel?2.5:2.1) : (isSel?1.9:1.5));
+    g.children[1].style.display = codes ? '' : 'none';
+    g.children[2].style.display = (!codes || isSel) ? '' : 'none';
+    g.firstChild.setAttribute('fill', isSel?'var(--accent-2)':'var(--dot)');
+  });
+  const b=$('lblBtn'); if (b) b.textContent = labelMode==='code' ? 'Ver nombres' : 'Ver códigos';
 }
 
 // ---------- línea de tiempo ----------
@@ -343,7 +365,7 @@ function drawSpark(tg){
 }
 
 function select(i){
-  sel=i; P.forEach((p,j)=>{ p.tr.classList.toggle('sel',j===i); const g=pitch.dots[j], c=g.firstChild; c.setAttribute('fill', j===i?'var(--accent-2)':'var(--team)'); c.setAttribute('r', j===i?2.6:2.2); g.children[2].style.display=j===i?'':'none'; });
+  sel=i; P.forEach((p,j)=>p.tr.classList.toggle('sel',j===i)); applyLabels();
   pitch.appendChild(pitch.dots[i]);
   $('selTitle').textContent=P[i].name; drawTimeline(); render(tNow,true);
 }
@@ -490,7 +512,8 @@ $('theme').onclick=()=>{
 
 if (D.mode==='1T'){ $('modeTag').textContent=' · Solo 1er tiempo'; document.querySelectorAll('.syncgrid .card')[1].style.display='none'; }
 $('foot').textContent=`${P.length} jugadores · GPS 10 Hz (posiciones a ${HZ} Hz) · Kickoff GPS 1T ${hms(D.kick1)} · 2T ${hms(D.kick2)} · Hora del dispositivo`;
-drawPitch(); showSync(); select(0); requestAnimationFrame(loop);
+drawPitch(); showSync(); select(0);
+$('lblBtn').onclick=()=>{ labelMode = labelMode==='code'?'name':'code'; store.set('labels',labelMode); applyLabels(); }; requestAnimationFrame(loop);
 </script>
 </body>
 </html>
