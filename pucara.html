@@ -328,6 +328,8 @@ function setGroupView(g){
 function refreshVis(){
   document.querySelectorAll('#grpSeg button').forEach(b=>b.classList.toggle('on', b.dataset.g===S.gview));
   P.forEach(p=>{ p.cVis.checked = isVis(p); const gb=p.cGrp, g=grpOf(p); gb.textContent=g; gb.classList.toggle('fw', g==='FW'); p.dotOn=null; });
+  // si el jugador seleccionado quedó oculto, pasa al primero visible
+  if (!isVis(P[sel])){ const k=P.findIndex(isVis); if (k>=0){ select(k); } }
   TEAM = teamMpm(); drawTimeline(); render(tNow,true);
 }
 function teamMpm(){
@@ -491,10 +493,10 @@ function render(tg, force){
   P.forEach((p,i)=>{
     const [x,y]=pos(p,tNow); const [X,Y]=xf(x,y); const on=!!p.on[i1];
     const g=pitch.dots[i]; g.setAttribute('transform',`translate(${X.toFixed(2)},${Y.toFixed(2)})`);
-    const show = on && (isVis(p) || i===sel);
+    const show = on && isVis(p);
     if (p.dotOn!==show){ p.dotOn=show; g.style.display = show ? '' : 'none'; }
   });
-  const p=P[sel]; let pts=''; for (let k=8*HZ;k>=0;k-=2){ const [x,y]=pos(p,tNow-k/HZ); const [X,Y]=xf(x,y); pts+=X.toFixed(2)+','+Y.toFixed(2)+' '; }
+  const p=P[sel]; let pts=''; if (isVis(p)) for (let k=8*HZ;k>=0;k-=2){ const [x,y]=pos(p,tNow-k/HZ); const [X,Y]=xf(x,y); pts+=X.toFixed(2)+','+Y.toFixed(2)+' '; }
   pitch.trail.setAttribute('points', p.on[i1] ? pts : '');
   tl.head.setAttribute('x1',tx(tNow)); tl.head.setAttribute('x2',tx(tNow)); tl.head.setAttribute('display', tNow>=VA&&tNow<=VB?'':'none');
   const q4=Math.floor(tNow*4);
