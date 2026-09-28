@@ -92,6 +92,7 @@ details.sync summary{cursor:pointer;color:var(--text-2);font-size:13px}
 .syncgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:10px}
 .syncgrid .card p{margin:0 0 8px;color:var(--text-2);font-size:12px}
 .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
+.fv{margin-left:6px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--accent-2)}
 .row .val{min-width:74px;font-variant-numeric:tabular-nums;font-weight:600}
 .mbar{display:flex;gap:8px;align-items:center;margin-top:8px}
 .mbar button{min-width:38px}
@@ -178,10 +179,12 @@ details.sync summary{cursor:pointer;color:var(--text-2);font-size:13px}
     <div class="card">
       <h2>Cancha</h2>
       <p>La cancha se estima a partir de los datos. Con más jugadores queda más precisa; si se ve corrida, ajustá acá.</p>
-      <div class="row"><span class="val">Largo</span><button data-f="dx" data-d="-1">◀ 1 m</button><button data-f="dx" data-d="1">1 m ▶</button></div>
-      <div class="row"><span class="val">Ancho</span><button data-f="dy" data-d="-1">▲ 1 m</button><button data-f="dy" data-d="1">1 m ▼</button></div>
-      <div class="row"><span class="val">Giro</span><button data-f="rot" data-d="-1">↺ 1°</button><button data-f="rot" data-d="1">↻ 1°</button><button id="flip">Girar 180°</button><button id="mirror">Espejo arriba/abajo</button></div>
-      <div class="row"><button id="resetAll">Restablecer todo</button></div>
+      <div class="row"><span class="val">Largo</span><button data-f="dx" data-d="-5">◀ 5 m</button><button data-f="dx" data-d="-1">◀ 1 m</button><button data-f="dx" data-d="1">1 m ▶</button><button data-f="dx" data-d="5">5 m ▶</button><span class="fv" id="fdx"></span></div>
+      <div class="row"><span class="val">Ancho</span><button data-f="dy" data-d="-5">▲ 5 m</button><button data-f="dy" data-d="-1">▲ 1 m</button><button data-f="dy" data-d="1">1 m ▼</button><button data-f="dy" data-d="5">5 m ▼</button><span class="fv" id="fdy"></span></div>
+      <div class="row"><span class="val">Giro</span><button data-f="rot" data-d="-1">↺ 1°</button><button data-f="rot" data-d="1">↻ 1°</button><span class="fv" id="frot"></span></div>
+      <div class="row"><span class="val"></span><button id="flip">Girar 180°</button><button id="mirror">Espejo arriba/abajo</button></div>
+      <div class="row"><button id="bakeBtn" style="border-color:var(--accent-2);font-weight:600">💾 Guardar en el archivo</button><button id="resetAll">Restablecer todo</button></div>
+      <p id="bakeMsg" style="margin:6px 0 0"></p>
     </div>
   </div>
 </details>
@@ -207,8 +210,12 @@ const ms = s => { const neg = s<0; s=Math.abs(Math.floor(s)); return (neg?'−':
 // ---------- ajustes persistentes ----------
 const store = { get(k,d){ try{ const v=localStorage.getItem('vgps_'+k); return v==null?d:JSON.parse(v);}catch(e){return d;} },
                 set(k,v){ try{ localStorage.setItem('vgps_'+k, JSON.stringify(v)); }catch(e){} } };
-let S = Object.assign({vk1:VK1_DEFAULT, off2:0, dx:0, dy:0, rot:0, flip:false, mirror:false}, store.get('settings2',{}));
-const save = () => store.set('settings2', S);
+// Ajustes guardados dentro del archivo (los escribe el botón «Guardar en el archivo»)
+const FILE_DEFAULTS = /*DEFAULTS*/{}/*END*/;
+const BASE = () => Object.assign({vk1:VK1_DEFAULT, off2:0, dx:0, dy:0, rot:0, flip:false, mirror:false}, FILE_DEFAULTS);
+const FILE_KEY = 'settings2_' + JSON.stringify(FILE_DEFAULTS);   // si cambia el archivo, se descartan ajustes viejos del navegador
+let S = Object.assign(BASE(), store.get(FILE_KEY, Object.keys(FILE_DEFAULTS).length ? {} : store.get('settings2',{})));  // conserva ajustes de la versión anterior
+const save = () => store.set(FILE_KEY, S);
 
 // ---------- mapeo video <-> GPS ----------
 const vk2 = () => S.vk1 + HALF_GAP + S.off2;
@@ -525,17 +532,35 @@ if (LOCAL){ clearTimeout(ytFail); fallback(FILE_MSG); }
 else (function(){ const s=document.createElement('script'); s.src='https://www.youtube.com/iframe_api'; s.onerror=()=>fallback(); document.head.appendChild(s); })();
 
 // ---------- ajustes ----------
-function showSync(){ $('v1').textContent=hms(S.vk1); $('v2').textContent=hms(vk2()); }
+function showSync(){ if (typeof showField==='function') showField(); $('v1').textContent=hms(S.vk1); $('v2').textContent=hms(vk2()); }
 document.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{
   const d=+b.dataset.d; if (b.dataset.k==='1') S.vk1+=d; else S.off2+=d; save(); showSync();
 });
 $('mark1').onclick=()=>{ const tv=currentVideoTime(); if(tv==null) return; S.vk1=Math.round(tv); save(); showSync(); };
 $('mark2').onclick=()=>{ const tv=currentVideoTime(); if(tv==null) return; S.off2=Math.round(tv - (S.vk1+HALF_GAP)); save(); showSync(); };
 $('goto2').onclick=()=>seekGps(D.kick2-5);
-document.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{ S[b.dataset.f]+=+b.dataset.d; save(); render(tNow,true); });
+function showField(){ const f=v=>(v>0?'+':'')+v; $('fdx').textContent=f(S.dx)+' m'; $('fdy').textContent=f(S.dy)+' m'; $('frot').textContent=f(S.rot)+'°'; }
+document.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{ S[b.dataset.f]+=+b.dataset.d; save(); showField(); render(tNow,true); });
 $('flip').onclick=()=>{ S.flip=!S.flip; save(); render(tNow,true); };
 $('mirror').onclick=()=>{ S.mirror=!S.mirror; save(); render(tNow,true); };
-$('resetAll').onclick=()=>{ S={vk1:VK1_DEFAULT,off2:0,dx:0,dy:0,rot:0,flip:false,mirror:false}; save(); showSync(); render(tNow,true); };
+$('resetAll').onclick=()=>{ S=BASE(); save(); showSync(); render(tNow,true); };
+$('bakeBtn').onclick=async()=>{
+  const msg=$('bakeMsg');
+  try{
+    const r=await fetch(location.href,{cache:'no-store'}); if(!r.ok) throw 0;
+    const src=await r.text();
+    const re=/\/\*DEFAULTS\*\/[\s\S]*?\/\*END\*\//;
+    if(!re.test(src)) throw 0;
+    const out=src.replace(re,'/*DEFAULTS*/'+JSON.stringify(S)+'/*END*/');
+    const name=decodeURIComponent(location.pathname.split('/').pop()||'index.html')||'index.html';
+    const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([out],{type:'text/html'})); a.download=name;
+    document.body.appendChild(a); a.click(); a.remove();
+    msg.innerHTML=`Se descargó <b>${name}</b> con estos ajustes. Subilo a GitHub (Add file → Upload files) para que todos lo vean así.`;
+  }catch(e){
+    msg.innerHTML='No se pudo generar el archivo desde acá (abrilo desde GitHub Pages). Valores actuales: '+
+      `largo ${S.dx} m · ancho ${S.dy} m · giro ${S.rot}° · 180° ${S.flip?'sí':'no'} · espejo ${S.mirror?'sí':'no'}`;
+  }
+};
 
 // tema
 $('theme').onclick=()=>{
