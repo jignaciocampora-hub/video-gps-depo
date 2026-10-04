@@ -100,6 +100,16 @@ details.sync summary{cursor:pointer;color:var(--text-2);font-size:13px}
 .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
 .fv{margin-left:6px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--accent-2)}
 .row .val{min-width:74px;font-variant-numeric:tabular-nums;font-weight:600}
+.lc-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:18px}
+@media (max-width:980px){.lc-grid{grid-template-columns:1fr}}
+.lc-note{color:var(--text-2);font-size:12px;margin:0 0 8px}
+.lc-h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-2);margin:14px 0 6px;font-weight:600}
+table.lc td,table.lc th{padding:5px 6px}
+table.lc tr.pk{cursor:pointer}
+table.lc tr.pk:hover td{background:var(--shade)}
+table.lc tr.act td{background:var(--shade)}
+table.lc tr.grp td{font-weight:700;border-top:2px solid var(--border)}
+.go{font-size:11px;padding:2px 8px}
 .syncbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px;font-size:13px}
 .syncbar .lbl{font-weight:600;color:var(--text-2);margin-right:2px}
 .syncbar button{padding:4px 9px}
@@ -179,6 +189,31 @@ details.sync summary{cursor:pointer;color:var(--text-2);font-size:13px}
     <thead><tr><th data-s="name">Jugador</th><th data-s="v">Vel. actual</th><th data-s="dist">Distancia (m)</th><th data-s="mpm">m/min (1′)</th><th data-s="hsr">HSR (m)</th><th data-s="spr">Sprints</th><th data-s="acc">ACC</th><th data-s="dec">DEC</th><th data-s="vmax">Vel. máx</th><th data-s="mins">Min</th></tr></thead>
     <tbody id="tbody"></tbody>
   </table></div>
+</div>
+
+<div class="card" id="loadCard" style="margin-top:14px">
+  <h2>Análisis de carga <span class="r">usa el filtro de grupo (Todos / FW / BK) y de tiempo (Partido / 1T / 2T)</span></h2>
+  <div class="lc-grid">
+    <div>
+      <div class="row" style="margin-bottom:8px">
+        <span class="val">Picos de</span>
+        <div class="seg small" id="pkMetric"><button data-m="mpm" class="on">m/min</button><button data-m="hsr">HSR m/min</button><button data-m="ad">ACC+DEC</button></div>
+        <div class="seg small" id="pkWin"><button data-w="60" class="on">1′</button><button data-w="120">2′</button><button data-w="300">5′</button></div>
+      </div>
+      <p class="lc-note">Los momentos más exigentes del grupo. Tocá uno para verlo en el video y ver la carga de cada jugador.</p>
+      <table class="lc"><thead><tr><th>#</th><th>Minuto</th><th id="pkValH">m/min</th><th></th></tr></thead><tbody id="pkBody"></tbody></table>
+      <h3 class="lc-h3">Pico individual de cada jugador</h3>
+      <table class="lc"><thead><tr><th>Jugador</th><th id="pkIndH">m/min</th><th>Minuto</th><th></th></tr></thead><tbody id="pkInd"></tbody></table>
+    </div>
+    <div>
+      <div class="row" style="margin-bottom:8px">
+        <span class="val">Jugada</span>
+        <button id="wStart">⏮ Marcar inicio</button><button id="wEnd">Marcar fin ⏭</button><button id="wLast">Últimos 30 s</button>
+      </div>
+      <p class="lc-note" id="wInfo">Marcá inicio y fin mientras mirás el video (o elegí un pico) y se calcula la carga de esa jugada.</p>
+      <div class="tablewrap"><table class="lc"><thead><tr><th>Jugador</th><th>Dist (m)</th><th>m/min</th><th>HSR (m)</th><th>Spr</th><th>ACC</th><th>DEC</th><th>Vmáx</th></tr></thead><tbody id="wBody"></tbody></table></div>
+    </div>
+  </div>
 </div>
 
 <details class="sync">
@@ -355,6 +390,7 @@ function refreshVis(){
   // si el jugador seleccionado quedó oculto, pasa al primero visible
   if (!isVis(P[sel])){ const k=P.findIndex(isVis); if (k>=0){ select(k); } }
   TEAM = teamMpm(); drawTimeline(); render(tNow,true);
+  if (typeof drawPeaks==='function' && document.getElementById('pkBody')) { drawPeaks(); drawWinTable(); }
 }
 function teamMpm(){
   const out = new Array(N1).fill(0);
@@ -391,6 +427,8 @@ function drawTimeline(){
   for (let i=iA;i<=iB;i+=step){ if(!p.on[i]){pen=false;continue;} dl+=(pen?'L':'M')+tx(T0+i).toFixed(1)+','+ty(p.mpm[i]).toFixed(1); pen=true; }
   el('path',{d:dl,fill:'none',stroke:'var(--accent-2)','stroke-width':2,'stroke-linejoin':'round'},tl);
   tl.hover = el('line',{y1:PADT,y2:TH-PADB,stroke:'var(--muted)','stroke-width':1,'stroke-dasharray':'3 3',display:'none'},tl);
+  tl.win = el('rect',{y:PADT,height:TH-PADT-PADB,fill:'var(--accent-2)',opacity:.22,display:'none'},tl);
+  if (typeof WIN!=='undefined' && WIN) drawWin();
   tl.head = el('line',{y1:PADT-2,y2:TH-PADB,stroke:'var(--text)','stroke-width':1.5},tl);
   $('tlLegend').innerHTML = `<span><i style="background:var(--accent-2)"></i>${p.name}</span><span><i class="area" style="background:var(--muted)"></i>Promedio ${grpLabel()==='el equipo'?'del equipo':'de '+grpLabel()} en cancha</span>`;
 }
@@ -459,7 +497,7 @@ function setPeriod(p){
   else { VA=T0; VB=TEND; }
   $('tblTitle').textContent = p==='all' ? 'Jugadores — acumulado del partido hasta este momento'
                             : `Jugadores — solo ${p==='1'?'1er':'2do'} tiempo`;
-  drawTimeline();
+  drawTimeline(); if (typeof drawPeaks==='function') drawPeaks();
   // si el video está fuera del tiempo elegido, lo lleva al kickoff de ese tiempo
   if (p==='1' && (tNow < D.kick1-60 || tNow > END1+30)) seekGps(D.kick1-3);
   else if (p==='2' && tNow < D.kick2-60) seekGps(D.kick2-3);
@@ -643,8 +681,90 @@ $('theme').onclick=()=>{
 
 if (D.mode==='1T'){ $('perSeg').style.display='none'; $('modeTag').textContent=' · Solo 1er tiempo'; document.querySelectorAll('.syncgrid .card')[1].style.display='none'; }
 $('foot').textContent=`${P.length} jugadores · GPS 10 Hz (posiciones a ${HZ} Hz) · Kickoff GPS 1T ${hms(D.kick1)} · 2T ${hms(D.kick2)} · Hora del dispositivo`;
+
+// ================= ANÁLISIS DE CARGA =================
+let PK = {m:'mpm', w:60}, WIN = null, PK_LIST = [];
+const inPlay = (a,b) => (a>=D.kick1 && b<=END1) || (a>=D.kick2 && b<=END2);
+function perRange(){ if (PER==='1') return [D.kick1, END1]; if (PER==='2') return [D.kick2, END2]; return [D.kick1, END2]; }
+function wVal(p, a, b, m){            // valor de un jugador entre los segundos a y b (índices 1 Hz)
+  const dur=(b-a)/60;
+  if (m==='mpm') return (p.dist[b]-p.dist[a])/dur;
+  if (m==='hsr') return (p.hsr[b]-p.hsr[a])/dur;
+  return (p.acc[b]-p.acc[a]) + (p.dec[b]-p.dec[a]);
+}
+function computePeaks(){
+  const W=PK.w, [ra,rb]=perRange(), vis=P.filter(isVis), out=[];
+  const series=[];
+  for (let g=Math.ceil(ra); g+W<=rb; g+=5){
+    if (!inPlay(g, g+W)) continue;
+    const a=idx(g), b=idx(g+W); let s=0,n=0;
+    for (const p of vis) if (p.on[a] && p.on[b]) { s+=wVal(p,a,b,PK.m); n++; }
+    if (n>=3) series.push([g, s/n, n]);
+  }
+  series.sort((x,y)=>y[1]-x[1]);
+  for (const c of series){ if (out.every(o=>Math.abs(o[0]-c[0])>=W)) out.push(c); if (out.length>=5) break; }
+  PK_LIST=out;
+  // pico individual
+  const ind = vis.map(p=>{ let best=[-1,0];
+    for (let g=Math.ceil(ra); g+W<=rb; g+=5){ if(!inPlay(g,g+W)) continue; const a=idx(g), b=idx(g+W);
+      if (!(p.on[a]&&p.on[b])) continue; const v=wVal(p,a,b,PK.m); if (v>best[0]) best=[v,g]; }
+    return [p,best]; }).filter(x=>x[1][0]>=0).sort((x,y)=>y[1][0]-x[1][0]);
+  return ind;
+}
+const fmtV = v => PK.m==='ad' ? Math.round(v) : Math.round(v);
+function minLabel(g){ const [per,c]=matchClock(g); return `${per} ${c}`; }
+function drawPeaks(){
+  const ind=computePeaks(), unit={mpm:'m/min',hsr:'HSR m/min',ad:'ACC+DEC'}[PK.m];
+  $('pkValH').textContent = PK.m==='ad' ? 'ACC+DEC (prom.)' : unit+' (prom.)'; $('pkIndH').textContent=unit;
+  $('pkBody').innerHTML = PK_LIST.length ? PK_LIST.map((c,i)=>`<tr class="pk" data-g="${c[0]}"><td>${i+1}</td><td>${minLabel(c[0])}</td><td><b>${PK.m==='ad'?c[1].toFixed(1):Math.round(c[1])}</b></td><td><button class="go">▶ ver</button></td></tr>`).join('')
+    : '<tr><td colspan="4" style="color:var(--muted)">Sin datos para este filtro</td></tr>';
+  $('pkInd').innerHTML = ind.map(([p,[v,g]])=>`<tr class="pk" data-g="${g}" data-p="${p.name}"><td>${p.name}</td><td><b>${fmtV(v)}</b></td><td>${minLabel(g)}</td><td><button class="go">▶</button></td></tr>`).join('');
+  document.querySelectorAll('#pkBody tr.pk, #pkInd tr.pk').forEach(r=>r.onclick=()=>{
+    const g=+r.dataset.g; setWin(g, g+PK.w); seekGps(g-5);
+    if (r.dataset.p){ const k=P.findIndex(p=>p.name===r.dataset.p); if (k>=0) select(k); }
+  });
+  hlPeaks();
+}
+function hlPeaks(){ document.querySelectorAll('#pkBody tr.pk, #pkInd tr.pk').forEach(r=>r.classList.toggle('act', !!WIN && +r.dataset.g===WIN[0] && (WIN[1]-WIN[0])===PK.w)); }
+document.querySelectorAll('#pkMetric button').forEach(b=>b.onclick=()=>{ PK.m=b.dataset.m; document.querySelectorAll('#pkMetric button').forEach(x=>x.classList.toggle('on',x===b)); drawPeaks(); });
+document.querySelectorAll('#pkWin button').forEach(b=>b.onclick=()=>{ PK.w=+b.dataset.w; document.querySelectorAll('#pkWin button').forEach(x=>x.classList.toggle('on',x===b)); drawPeaks(); });
+
+// ---- jugada (ventana) ----
+function drawWin(){
+  if (!tl.win) return;
+  if (!WIN){ tl.win.setAttribute('display','none'); return; }
+  const a=Math.max(WIN[0],VA), b=Math.min(WIN[1],VB);
+  if (b<=a){ tl.win.setAttribute('display','none'); return; }
+  tl.win.setAttribute('x',tx(a)); tl.win.setAttribute('width',Math.max(2,tx(b)-tx(a))); tl.win.setAttribute('display','');
+}
+function setWin(a,b){
+  if (b<a) [a,b]=[b,a]; if (b-a<3) b=a+3;
+  WIN=[a,b]; drawWin(); drawWinTable(); hlPeaks();
+}
+function drawWinTable(){
+  if (!WIN){ $('wBody').innerHTML=''; return; }
+  const [ga,gb]=WIN, a=idx(ga), b=idx(gb), dur=gb-ga;
+  $('wInfo').innerHTML = `<b>${minLabel(ga)}</b> → <b>${minLabel(gb)}</b> · ${Math.round(dur)} s · <a href="#" id="wPlay">▶ ver jugada</a>`;
+  $('wPlay').onclick=e=>{ e.preventDefault(); seekGps(ga-2); };
+  const rows=P.filter(p=>isVis(p) && (p.on[a]||p.on[b])).map(p=>{
+    const i5a=Math.max(0,Math.floor((ga-T0)*HZ)), i5b=Math.min(p.v.length-1,Math.ceil((gb-T0)*HZ));
+    let vm=0; for (let i=i5a;i<=i5b;i++) if (p.v[i]>vm) vm=p.v[i];
+    const dist=p.dist[b]-p.dist[a];
+    return {p, dist, mpm:dist/(dur/60), hsr:p.hsr[b]-p.hsr[a], spr:p.spr[b]-p.spr[a], acc:p.acc[b]-p.acc[a], dec:p.dec[b]-p.dec[a], vm:vm*0.036};
+  }).sort((x,y)=>y.mpm-x.mpm);
+  const avg=(arr,k)=>arr.length? arr.reduce((s,r)=>s+r[k],0)/arr.length : 0;
+  const line=(n,r,cls)=>`<tr class="${cls||''}"><td>${n}</td><td>${Math.round(r.dist)}</td><td><b>${Math.round(r.mpm)}</b></td><td>${Math.round(r.hsr)}</td><td>${(+r.spr).toFixed(cls?1:0)}</td><td>${(+r.acc).toFixed(cls?1:0)}</td><td>${(+r.dec).toFixed(cls?1:0)}</td><td>${r.vm.toFixed(1)}</td></tr>`;
+  let html=rows.map(r=>line(r.p.name,r)).join('');
+  ['FW','BK'].forEach(g=>{ const rs=rows.filter(r=>grpOf(r.p)===g); if (rs.length){ const k=['dist','mpm','hsr','spr','acc','dec','vm']; const o={}; k.forEach(x=>o[x]=avg(rs,x)); html+=line(`Promedio ${g==='FW'?'forwards':'backs'} (${rs.length})`,o,'grp'); } });
+  $('wBody').innerHTML = html || '<tr><td colspan="8" style="color:var(--muted)">Nadie en cancha en ese tramo</td></tr>';
+}
+let wMarkA=null;
+$('wStart').onclick=()=>{ wMarkA=tNow; WIN=[tNow,tNow+3]; drawWin(); $('wInfo').textContent='Inicio marcado en '+minLabel(tNow)+'. Dejá correr el video y tocá «Marcar fin».'; };
+$('wEnd').onclick=()=>{ setWin(wMarkA!=null?wMarkA:tNow-30, tNow); wMarkA=null; };
+$('wLast').onclick=()=>setWin(tNow-30, tNow);
+
 $('mTitle').textContent=META.title||''; $('mSub').textContent=META.sub||'';
-drawPitch(); showSync(); select(0); refreshVis();
+drawPitch(); showSync(); select(0); refreshVis(); drawPeaks();
 $('lblBtn').onclick=()=>{ labelMode = labelMode==='code'?'name':'code'; store.set('labels',labelMode); applyLabels(); }; requestAnimationFrame(loop);
 </script>
 </body>
