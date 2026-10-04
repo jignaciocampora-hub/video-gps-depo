@@ -104,6 +104,8 @@ details.sync summary{cursor:pointer;color:var(--text-2);font-size:13px}
 .syncbar .lbl{font-weight:600;color:var(--text-2);margin-right:2px}
 .syncbar button{padding:4px 9px}
 .syncbar .off{min-width:64px;text-align:center;font-weight:700;font-variant-numeric:tabular-nums;color:var(--accent-2)}
+.syncbar button.save{border-color:var(--accent-2);font-weight:600}
+.syncbar button.dirty{background:var(--accent-2);color:#fff}
 .syncbar .hint{color:var(--muted);font-size:12px;width:100%}
 .mbar{display:flex;gap:8px;align-items:center;margin-top:8px}
 .mbar button{min-width:38px}
@@ -133,11 +135,11 @@ details.sync summary{cursor:pointer;color:var(--text-2);font-size:13px}
       </div>
       <div class="syncbar" id="syncbar">
         <span class="lbl">Sincronía</span>
-        <button data-o="-5" title="La animación va adelantada">−5 s</button><button data-o="-1" title="La animación va adelantada">−1 s</button><button data-o="-0.2" title="La animación va adelantada">−0,2</button>
+        <button data-o="-5">−5 s</button><button data-o="-1">−1 s</button><button data-o="-0.5">−0,5</button>
         <span class="off" id="offNow">0,0 s</span>
-        <button data-o="0.2" title="La animación va atrasada">+0,2</button><button data-o="1" title="La animación va atrasada">+1 s</button><button data-o="5" title="La animación va atrasada">+5 s</button>
-        <button id="pinBtn" title="Usar este ajuste desde este momento del video en adelante">📍 Fijar punto acá</button>
-        <span class="hint" id="syncHint">«−» si la animación va adelantada · «+» si va atrasada</span>
+        <button data-o="0.5">+0,5</button><button data-o="1">+1 s</button><button data-o="5">+5 s</button>
+        <button id="syncSave" class="save">💾 Guardar</button><button id="syncUndo" title="Volver a lo último guardado">↺ Deshacer</button>
+        <span class="hint" id="syncHint">«−» si la animación va adelantada · «+» si va atrasada. El ajuste vale desde este momento del video en adelante.</span>
       </div>
       <div class="mbar" id="mbar" style="display:none">
         <button id="mplay">▶</button><span class="sub" style="color:var(--muted);font-size:12px">Modo sin video: reproducción de los datos a velocidad real</span>
@@ -183,10 +185,9 @@ details.sync summary{cursor:pointer;color:var(--text-2);font-size:13px}
   <summary>Ajustes de sincronización y cancha</summary>
   <div class="syncgrid">
     <div class="card">
-      <h2>Puntos de sincronización</h2>
-      <p>Si al saltar a otra parte del video la animación no coincide, el video tiene un corte ahí. Pausá en una jugada clara, ajustá con los botones de abajo del video hasta que coincida y tocá «📍 Fijar punto acá». Desde ese momento en adelante se usa ese ajuste.</p>
-      <div id="anchorList" style="font-size:13px;margin-bottom:8px"></div>
-      <div class="row"><button id="goto2">Ir al 2T</button></div>
+      <h2>Sincronización</h2>
+      <p>Se ajusta con la barra «Sincronía» de abajo del video. Cada ajuste vale desde ese momento del video hasta el final, así que si el video tiene un corte, lo corregís ahí y lo anterior queda como estaba.</p>
+      <div class="row"><button id="goto2">Ir al 2T</button><button id="syncReset">Volver a la sincronización original</button></div>
     </div>
     <div class="card">
       <h2>Cancha</h2>
@@ -237,7 +238,7 @@ const vk2 = () => S.vk1 + HALF_GAP + S.off2;
 // Entre puntos el desfase es constante; un corte en el video se arregla agregando un punto.
 function anchors(){
   if (!Array.isArray(S.anchors) || !S.anchors.length)
-    S.anchors = [{v:S.vk1, o:D.kick1 - S.vk1}, {v:vk2() - 180, o:D.kick2 - vk2()}];
+    S.anchors = [{v:S.vk1, o:D.kick1 - S.vk1, fix:1}, {v:vk2() - 180, o:D.kick2 - vk2(), fix:1}];   // inicio de cada tiempo
   return S.anchors;
 }
 function anchorAtVideo(tv){ const A=anchors(); let k=0; for (let i=0;i<A.length;i++) if (A[i].v<=tv) k=i; return k; }
@@ -583,27 +584,28 @@ else (function(){ const s=document.createElement('script'); s.src='https://www.y
 // desfase original (el calculado al armar el archivo) para un segundo del video
 function origOff(tv){ const v2=VK1_DEFAULT+HALF_GAP+OFF2_DEFAULT; return tv < v2-180 ? D.kick1-VK1_DEFAULT : D.kick2-v2; }
 function fmtOff(o){ return (o>0?'+':'')+o.toFixed(1).replace('.',',')+' s'; }
+let syncDirty=false;
+function curVideo(){ const v=(typeof currentVideoTime==='function')?currentVideoTime():null; return v!=null ? v : g2v(tNow); }
 function showSync(){
   if (typeof showField==='function') showField();
-  const A=anchors(), tv=(typeof currentVideoTime==='function' && currentVideoTime()!=null) ? currentVideoTime() : g2v(tNow);
-  const k=anchorAtVideo(tv);
-  $('offNow').textContent = fmtOff(A[k].o - origOff(A[k].v));
-  $('anchorList').innerHTML = A.map((a,i)=>`<div class="row" style="margin:0 0 4px">${i===k?'▶':'·'} desde <b>${hms(a.v)}</b> del video <button data-del="${i}" ${i<2?'disabled':''} style="padding:1px 7px;font-size:11px">quitar</button></div>`).join('');
-  document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{ S.anchors.splice(+b.dataset.del,1); save(); showSync(); render(tNow,true); });
+  const A=anchors(), k=anchorAtVideo(curVideo());
+  setTxt($('offNow'), fmtOff(A[k].o - origOff(A[k].v)));
+  $('syncSave').classList.toggle('dirty', syncDirty);
+  $('syncSave').textContent = syncDirty ? '💾 Guardar cambios' : '💾 Guardado';
 }
+// Ajuste: vale desde el momento actual del video en adelante
 document.querySelectorAll('[data-o]').forEach(b=>b.onclick=()=>{
-  const A=anchors(), tv=currentVideoTime()!=null ? currentVideoTime() : g2v(tNow), k=anchorAtVideo(tv);
-  A[k].o = Math.round((A[k].o + (+b.dataset.o))*10)/10;
-  if (k===0){ S.vk1 = Math.round(D.kick1 - A[0].o); }
-  save(); showSync(); render(v2g(tv), true);
+  const A=anchors(), tv=curVideo(), d=+b.dataset.o;
+  let k=anchorAtVideo(tv);
+  if (tv - A[k].v > 2 && tv > A[0].v + 2){ A.splice(k+1,0,{v:Math.round(tv*10)/10, o:A[k].o}); k=k+1; }
+  // se corre este tramo y los siguientes del mismo tiempo (el inicio del otro tiempo no se toca)
+  for (let i=k;i<A.length;i++){ if (i>k && A[i].fix) break; A[i].o = Math.round((A[i].o + d)*10)/10; }
+  syncDirty=true; showSync(); render(v2g(tv), true);
 });
-$('pinBtn').onclick=()=>{
-  const A=anchors(), tv=currentVideoTime()!=null ? currentVideoTime() : g2v(tNow), k=anchorAtVideo(tv);
-  if (Math.abs(A[k].v - tv) < 1) { $('syncHint').textContent='Ya hay un punto acá. Ajustá con − / +.'; return; }
-  A.push({v:Math.round(tv*10)/10, o:A[k].o}); A.sort((x,y)=>x.v-y.v);
-  save(); showSync(); $('syncHint').textContent='Punto fijado. Los ajustes ahora valen desde '+hms(tv)+' en adelante.';
-};
-setInterval(()=>{ if (document.getElementById('offNow')) showSync(); }, 1000);
+$('syncSave').onclick=()=>{ save(); syncDirty=false; showSync(); $('syncHint').textContent='Guardado en este navegador ✓. La próxima vez que abras el panel queda igual.'; };
+$('syncUndo').onclick=()=>{ const st=store.get(FILE_KEY,null); S.anchors = st && st.anchors ? st.anchors : null; syncDirty=false; showSync(); render(v2g(curVideo()),true); };
+$('syncReset').onclick=()=>{ S.anchors=null; S.vk1=VK1_DEFAULT; S.off2=OFF2_DEFAULT; syncDirty=true; showSync(); render(v2g(curVideo()),true); };
+setInterval(()=>{ try{ showSync(); }catch(e){} }, 500);
 $('goto2').onclick=()=>seekGps(D.kick2-5);
 function showField(){ const f=v=>(v>0?'+':'')+v; $('fdx').textContent=f(S.dx)+' m'; $('fdy').textContent=f(S.dy)+' m'; $('frot').textContent=f(S.rot)+'°'; }
 document.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{ S[b.dataset.f]+=+b.dataset.d; save(); showField(); render(tNow,true); });
