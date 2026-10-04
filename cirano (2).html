@@ -260,7 +260,7 @@ const ms = s => { const neg = s<0; s=Math.abs(Math.floor(s)); return (neg?'−':
 const store = { get(k,d){ try{ const v=localStorage.getItem('vgps_'+k); return v==null?d:JSON.parse(v);}catch(e){return d;} },
                 set(k,v){ try{ localStorage.setItem('vgps_'+k, JSON.stringify(v)); }catch(e){} } };
 // Ajustes guardados dentro del archivo (los escribe el botón «Guardar en el archivo»)
-const FILE_DEFAULTS = /*DEFAULTS*/{"corr":[],"vk1":5688,"off2":-11,"dx":-10,"dy":0,"rot":0,"flip":false,"mirror":false,"grp":{},"hide":[],"gview":"all"}/*END*/;
+const FILE_DEFAULTS = /*DEFAULTS*/{"corr":[{"v":6725.7,"d":7},{"v":6730.6,"d":-2}],"vk1":5688,"off2":-11,"dx":-10,"dy":0,"rot":0,"flip":false,"mirror":false,"grp":{},"hide":[],"gview":"all"}/*END*/;
 const OFF2_DEFAULT = (META.vk2!=null) ? Math.round(META.vk2 - (VK1_DEFAULT + (D.kick2 - D.kick1))) : 0;   // corte del video en el entretiempo
 const BASE = () => Object.assign({corr:[], vk1:VK1_DEFAULT, off2:OFF2_DEFAULT, dx:0, dy:0, rot:0, flip:false, mirror:false, grp:{}, hide:[], gview:'all'}, JSON.parse(JSON.stringify(FILE_DEFAULTS)));
 const FILE_KEY = (META.slug && META.slug!=='pucara' ? META.slug+'_v5_' : '') + 'settings2_' + JSON.stringify(FILE_DEFAULTS);   // un juego de ajustes por partido   // si cambia el archivo, se descartan ajustes viejos del navegador
