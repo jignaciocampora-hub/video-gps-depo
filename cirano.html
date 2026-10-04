@@ -201,7 +201,7 @@ table.lc tr.grp td{font-weight:700;border-top:2px solid var(--border)}
     <div>
       <div class="row" style="margin-bottom:8px">
         <span class="val">Picos de</span>
-        <div class="seg small" id="pkMetric"><button data-m="mpm" class="on">m/min</button><button data-m="hsr">HSR m/min</button><button data-m="ad">ACC+DEC</button></div>
+        <div class="seg small" id="pkMetric"><button data-m="mpm" class="on">m/min</button><button data-m="hsr">HSR m/min</button><button data-m="ad">ACC+DEC</button><button data-m="vmax">Vel. máx</button></div>
         <div class="seg small" id="pkWin"><button data-w="60" class="on">1′</button><button data-w="120">2′</button><button data-w="300">5′</button></div>
       </div>
       <p class="lc-note">Los momentos más exigentes del grupo. Tocá uno para verlo en el video y ver la carga de cada jugador.</p>
@@ -727,6 +727,18 @@ function wVal(p, a, b, m){            // valor de un jugador entre los segundos 
   if (m==='hsr') return (p.hsr[b]-p.hsr[a])/dur;
   return (p.acc[b]-p.acc[a]) + (p.dec[b]-p.dec[a]);
 }
+// Vel. máx: momento exacto (5 Hz) de la velocidad más alta de cada jugador, en juego y en cancha
+function speedPeaks(){
+  const [ra,rb]=perRange(), vis=P.filter(isVis), res=[];
+  for (const p of vis){
+    let best=0, bt=null;
+    const i0=Math.max(0,Math.floor((ra-T0)*HZ)), i1=Math.min(p.v.length-1,Math.floor((rb-T0)*HZ));
+    for (let i=i0;i<=i1;i++){ if (p.v[i]<=best) continue; const g=T0+i/HZ;
+      if (!inPlay(g,g) || !p.on[idx(g)]) continue; best=p.v[i]; bt=g; }
+    if (bt!=null) res.push([p, best*0.036, bt]);
+  }
+  return res.sort((a,b)=>b[1]-a[1]);
+}
 function computePeaks(){
   const W=PK.w, [ra,rb]=perRange(), vis=P.filter(isVis), out=[];
   const series=[];
@@ -749,6 +761,8 @@ function computePeaks(){
 const fmtV = v => PK.m==='ad' ? Math.round(v) : Math.round(v);
 function minLabel(g){ const [per,c]=matchClock(g); return `${per} ${c}`; }
 function drawPeaks(){
+  document.getElementById('pkWin').style.display = PK.m==='vmax' ? 'none' : '';
+  if (PK.m==='vmax') return drawSpeedPeaks();
   const ind=computePeaks(), unit={mpm:'m/min',hsr:'HSR m/min',ad:'ACC+DEC'}[PK.m];
   $('pkValH').textContent = PK.m==='ad' ? 'ACC+DEC (prom.)' : unit+' (prom.)'; $('pkIndH').textContent=unit;
   $('pkBody').innerHTML = PK_LIST.length ? PK_LIST.map((c,i)=>`<tr class="pk" data-g="${c[0]}"><td>${i+1}</td><td>${minLabel(c[0])}</td><td><b>${PK.m==='ad'?c[1].toFixed(1):Math.round(c[1])}</b></td><td><button class="go">▶ ver</button></td></tr>`).join('')
@@ -759,6 +773,17 @@ function drawPeaks(){
     if (r.dataset.p){ const k=P.findIndex(p=>p.name===r.dataset.p); if (k>=0) select(k); }
   });
   hlPeaks();
+}
+function drawSpeedPeaks(){
+  const sp=speedPeaks(); PK_LIST=[];
+  $('pkValH').textContent='km/h · jugador'; $('pkIndH').textContent='km/h';
+  const row=(r,i,lab)=>`<tr class="pk" data-g="${r[2]}" data-p="${r[0].name}" data-v="1"><td>${lab}</td><td>${minLabel(r[2])}</td><td><b>${r[1].toFixed(1)}</b>${i!=null?' · '+r[0].name:''}</td><td><button class="go">▶ ver</button></td></tr>`;
+  $('pkBody').innerHTML = sp.slice(0,5).map((r,i)=>row(r,i,i+1)).join('') || '<tr><td colspan="4" style="color:var(--muted)">Sin datos</td></tr>';
+  $('pkInd').innerHTML = sp.map(r=>`<tr class="pk" data-g="${r[2]}" data-p="${r[0].name}" data-v="1"><td>${r[0].name}</td><td><b>${r[1].toFixed(1)}</b></td><td>${minLabel(r[2])}</td><td><button class="go">▶</button></td></tr>`).join('');
+  document.querySelectorAll('#pkBody tr.pk, #pkInd tr.pk').forEach(r=>r.onclick=()=>{
+    const g=+r.dataset.g; setWin(g-5, g+3); seekGps(g-5);
+    const k=P.findIndex(p=>p.name===r.dataset.p); if (k>=0) select(k);
+  });
 }
 function hlPeaks(){ document.querySelectorAll('#pkBody tr.pk, #pkInd tr.pk').forEach(r=>r.classList.toggle('act', !!WIN && +r.dataset.g===WIN[0] && (WIN[1]-WIN[0])===PK.w)); }
 document.querySelectorAll('#pkMetric button').forEach(b=>b.onclick=()=>{ PK.m=b.dataset.m; document.querySelectorAll('#pkMetric button').forEach(x=>x.classList.toggle('on',x===b)); drawPeaks(); });
