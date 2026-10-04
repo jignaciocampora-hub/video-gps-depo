@@ -156,7 +156,7 @@ table.lc tr.grp td{font-weight:700;border-top:2px solid var(--border)}
       </div>
     </div>
     <div class="card">
-      <h2>Intensidad (m/min, último minuto) <span class="r">click para saltar a ese momento</span></h2>
+      <h2>Intensidad (m/min, último minuto) <span class="r">click para saltar · ruedita del mouse para avanzar/retroceder</span></h2>
       <div class="legend" id="tlLegend"></div>
       <svg id="tl" viewBox="0 0 800 170" preserveAspectRatio="none"></svg>
     </div>
@@ -164,7 +164,7 @@ table.lc tr.grp td{font-weight:700;border-top:2px solid var(--border)}
 
   <div class="col">
     <div class="card">
-      <h2>Posición en cancha <span class="r" id="pitchNote">tocá un jugador · rastro 8 s <button id="lblBtn" style="margin-left:8px;padding:2px 8px;font-size:12px">Ver códigos</button></span></h2>
+      <h2>Posición en cancha <span class="r" id="pitchNote">tocá un jugador · ruedita: ±2 s (Shift ±10 s) <button id="lblBtn" style="margin-left:8px;padding:2px 8px;font-size:12px">Ver códigos</button></span></h2>
       <div class="seg small" id="grpSeg" style="margin:0 0 8px"><button data-g="all">Todos</button><button data-g="FW">Forwards</button><button data-g="BK">Backs</button><button data-g="custom" disabled>Selección</button></div>
       <svg id="pitch" viewBox="-62 -40 124 80"></svg>
       <div class="shape" id="shape"></div>
@@ -595,6 +595,31 @@ function currentVideoTime(){
   if (t!==ytT){ ytT=t; ytAt=now; }
   return st===1 ? ytT + (now-ytAt)/1000*ytRate : t;
 }
+// ---------- ruedita del mouse / flechas: avanzar y retroceder video + animación ----------
+let scrubUntil = 0, scrubTimer = null;
+function scrubBy(sec){
+  const tg = Math.min(TEND, Math.max(T0, tNow + sec));
+  scrubUntil = performance.now() + 700;
+  if (ytReady){
+    try{ if (yt.getPlayerState()===1) yt.pauseVideo(); }catch(e){}
+    clearTimeout(scrubTimer);
+    yt.seekTo(g2v(tg), false);                                  // vista previa rápida
+    scrubTimer = setTimeout(()=>{ yt.seekTo(g2v(tNow), true); ytT=g2v(tNow); ytAt=performance.now(); }, 250);
+  }
+  render(tg, true);
+}
+function onWheel(e){
+  e.preventDefault();
+  const dir = (e.deltaY || e.deltaX) > 0 ? 1 : -1;
+  scrubBy(dir * (e.shiftKey ? 10 : 2));
+}
+['pitch','tl'].forEach(id=>document.getElementById(id).addEventListener('wheel', onWheel, {passive:false}));
+document.addEventListener('keydown', e=>{
+  if (e.target.closest && e.target.closest('input,textarea')) return;
+  if (e.key==='ArrowRight'){ e.preventDefault(); scrubBy(e.shiftKey?10:2); }
+  else if (e.key==='ArrowLeft'){ e.preventDefault(); scrubBy(e.shiftKey?-10:-2); }
+  else if (e.key===' ' && ytReady && !(e.target.closest && e.target.closest('button'))){ e.preventDefault(); try{ yt.getPlayerState()===1 ? yt.pauseVideo() : yt.playVideo(); }catch(_){} }
+});
 function seekGps(tg){
   tg=Math.min(TEND,Math.max(T0,tg));
   if (ytReady){ yt.seekTo(g2v(tg), true); ytT=g2v(tg); ytAt=performance.now(); }
@@ -607,7 +632,8 @@ function loop(now){
   if (!ytReady && playing) tNow=Math.min(TEND,tNow+dt);
   if (now-lastDraw>=FRAME_MS && !document.hidden){
     lastDraw=now;
-    if (ytReady){ const tv=currentVideoTime(); if (tv!=null) render(v2g(tv)); }
+    if (ytReady && now < scrubUntil) render(tNow);                       // mientras se scrollea manda la ruedita
+    else if (ytReady){ const tv=currentVideoTime(); if (tv!=null) render(v2g(tv)); }
     else render(tNow);
   }
   requestAnimationFrame(loop);
