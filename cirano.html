@@ -58,6 +58,9 @@ button:hover{border-color:var(--muted)}
 .card h2 .r{margin-left:auto;text-transform:none;letter-spacing:0;font-weight:500;color:var(--muted)}
 .video{position:relative;aspect-ratio:16/9;background:#000;border-radius:8px;overflow:hidden}
 .video > div,.video iframe{position:absolute;inset:0;width:100%;height:100%}
+.scrubov{position:absolute;inset:0;z-index:3;display:none;cursor:ns-resize;align-items:flex-end;justify-content:center;padding-bottom:58px}
+.scrubov span{background:rgba(0,0,0,.62);color:#fff;font-size:12px;padding:5px 12px;border-radius:999px}
+.scrubov.on{display:flex}
 .novideo{position:absolute;inset:0;display:none;align-items:center;justify-content:center;text-align:center;color:#ddd;padding:24px;font-size:14px;line-height:1.5}
 .col{display:flex;flex-direction:column;gap:14px;min-width:0}
 #pitch{width:100%;height:auto;display:block;border-radius:8px}
@@ -141,6 +144,7 @@ table.lc tr.grp td{font-weight:700;border-top:2px solid var(--border)}
   <div class="col">
     <div class="card">
       <div class="video"><div id="yt"></div>
+        <div class="scrubov" id="scrubov"><span>⏸ En pausa · <b>ruedita</b> para avanzar / retroceder (Shift = 10 s) · <b>click</b> para play</span></div>
         <div class="novideo" id="novideo">No se pudo cargar YouTube (abrí el panel desde GitHub Pages o un servidor local).<br>Podés usar el panel igual con la línea de tiempo y ▶ de abajo.</div>
       </div>
       <div class="syncbar" id="syncbar">
@@ -602,6 +606,7 @@ function scrubBy(sec){
   scrubUntil = performance.now() + 700;
   if (ytReady){
     try{ if (yt.getPlayerState()===1) yt.pauseVideo(); }catch(e){}
+    setOverlay(true);
     clearTimeout(scrubTimer);
     yt.seekTo(g2v(tg), false);                                  // vista previa rápida
     scrubTimer = setTimeout(()=>{ yt.seekTo(g2v(tNow), true); ytT=g2v(tNow); ytAt=performance.now(); }, 250);
@@ -613,7 +618,10 @@ function onWheel(e){
   const dir = (e.deltaY || e.deltaX) > 0 ? 1 : -1;
   scrubBy(dir * (e.shiftKey ? 10 : 2));
 }
-['pitch','tl'].forEach(id=>document.getElementById(id).addEventListener('wheel', onWheel, {passive:false}));
+['pitch','tl','scrubov'].forEach(id=>document.getElementById(id).addEventListener('wheel', onWheel, {passive:false}));
+// En pausa: una capa transparente sobre el video toma la ruedita (YouTube no deja leerla) y un click vuelve a play
+function setOverlay(on){ const o=document.getElementById('scrubov'); if (o) o.classList.toggle('on', !!on && ytReady); }
+document.getElementById('scrubov').addEventListener('click', ()=>{ try{ yt.playVideo(); }catch(e){} setOverlay(false); });
 document.addEventListener('keydown', e=>{
   if (e.target.closest && e.target.closest('input,textarea')) return;
   if (e.key==='ArrowRight'){ e.preventDefault(); scrubBy(e.shiftKey?10:2); }
@@ -642,6 +650,7 @@ window.onYouTubeIframeAPIReady=function(){
   yt=new YT.Player('yt',{videoId:VIDEO_ID,playerVars:{start:Math.floor(SYNC[0][0]),rel:0,modestbranding:1,playsinline:1},
     events:{onReady:()=>{ytReady=true; clearTimeout(ytFail);},
             onPlaybackRateChange:e=>{ytRate=e.data;},
+            onStateChange:e=>{ setOverlay(e.data!==1 && e.data!==3); },
             onError:e=>fallback(e.data===153||e.data===152?FILE_MSG:null)}});
 };
 function fallback(msg){ ytReady=false; if(msg) $('novideo').innerHTML=msg; $('novideo').style.display='flex'; $('yt').style.display='none'; $('mbar').style.display='flex'; }
