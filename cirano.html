@@ -140,7 +140,7 @@ table.lc tr.grp td{font-weight:700;border-top:2px solid var(--border)}
   </div>
 </header>
 
-<div class="grid">
+<div class="grid" id="topGrid">
   <div class="col">
     <div class="card">
       <div class="video"><div id="yt"></div>
@@ -213,6 +213,10 @@ table.lc tr.grp td{font-weight:700;border-top:2px solid var(--border)}
       <div class="row" style="margin-bottom:8px">
         <span class="val">Jugada</span>
         <button id="wStart">⏮ Marcar inicio</button><button id="wEnd">Marcar fin ⏭</button><button id="wLast">Últimos 30 s</button>
+      </div>
+      <div class="row" style="margin-bottom:8px">
+        <span class="val">Compartir</span>
+        <button id="wRec" style="border-color:var(--accent-2);font-weight:600">🎬 Grabar clip</button><button id="wLink">🔗 Copiar link + datos</button><span id="recMsg" class="lc-note" style="margin:0"></span>
       </div>
       <p class="lc-note" id="wInfo">Marcá inicio y fin mientras mirás el video (o elegí un pico) y se calcula la carga de esa jugada.</p>
       <div class="tablewrap"><table class="lc"><thead><tr><th>Jugador</th><th>Dist (m)</th><th>m/min</th><th>HSR (m)</th><th>Spr</th><th>ACC</th><th>DEC</th><th>Vmáx</th></tr></thead><tbody id="wBody"></tbody></table></div>
@@ -822,6 +826,63 @@ let wMarkA=null;
 $('wStart').onclick=()=>{ wMarkA=tNow; WIN=[tNow,tNow+3]; drawWin(); $('wInfo').textContent='Inicio marcado en '+minLabel(tNow)+'. Dejá correr el video y tocá «Marcar fin».'; };
 $('wEnd').onclick=()=>{ setWin(wMarkA!=null?wMarkA:tNow-30, tNow); wMarkA=null; };
 $('wLast').onclick=()=>setWin(tNow-30, tNow);
+
+// ---------- compartir la jugada ----------
+function clipText(){
+  const p=P[sel], [ga,gb]=WIN, a=idx(ga), b=idx(gb);
+  const i5a=Math.max(0,Math.floor((ga-T0)*HZ)), i5b=Math.min(p.v.length-1,Math.ceil((gb-T0)*HZ));
+  let vm=0; for (let i=i5a;i<=i5b;i++) if (p.v[i]>vm) vm=p.v[i];
+  const dist=p.dist[b]-p.dist[a];
+  return `${p.name} · ${(META.title||'').replace(' · 2R','')}\n${minLabel(ga)} → ${minLabel(gb)}\nVel. máx ${(vm*0.036).toFixed(1)} km/h · ${Math.round(dist)} m · ${Math.round(dist/((gb-ga)/60))} m/min`;
+}
+$('wLink').onclick=async()=>{
+  if (!WIN){ $('recMsg').textContent='Primero elegí una jugada.'; return; }
+  const url=`https://youtu.be/${VIDEO_ID}?t=${Math.max(0,Math.floor(g2v(WIN[0]-3)))}`;
+  const txt=clipText()+'\n'+url;
+  try{ await navigator.clipboard.writeText(txt); $('recMsg').textContent='Copiado ✓ — pegalo en WhatsApp'; }
+  catch(e){ prompt('Copiá este texto:', txt); }
+};
+// Graba la pestaña (video + cancha) mientras se reproduce la jugada y descarga el clip
+$('wRec').onclick=async()=>{
+  const msg=$('recMsg');
+  if (!WIN){ msg.textContent='Primero elegí una jugada (un pico o Marcar inicio/fin).'; return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia || !window.MediaRecorder){ msg.textContent='Este navegador no permite grabar. Usá Chrome o Edge en la compu.'; return; }
+  let stream;
+  try{
+    stream = await navigator.mediaDevices.getDisplayMedia({video:{frameRate:30}, audio:false, preferCurrentTab:true, selfBrowserSurface:'include', surfaceSwitching:'exclude'});
+  }catch(e){ msg.textContent='Grabación cancelada.'; return; }
+  const track=stream.getVideoTracks()[0];
+  try{ if (window.CropTarget && track.cropTo){ await track.cropTo(await CropTarget.fromElement(document.getElementById('topGrid'))); } }catch(e){}
+  const types=['video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9','video/webm'];
+  const mime=types.find(m=>MediaRecorder.isTypeSupported(m))||'';
+  const rec=new MediaRecorder(stream, mime?{mimeType:mime, videoBitsPerSecond:6e6}:{});
+  const chunks=[]; rec.ondataavailable=e=>{ if (e.data.size) chunks.push(e.data); };
+  const [ga,gb]=WIN, p=P[sel];
+  rec.onstop=()=>{
+    stream.getTracks().forEach(tr=>tr.stop());
+    const ext=(rec.mimeType||mime).includes('mp4')?'mp4':'webm';
+    const [per,c]=matchClock(ga);
+    const name=`${(META.slug||'partido')}_${p.name.replace(/\s+/g,'_')}_${per}_${c.replace(':','-')}.${ext}`;
+    const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(chunks,{type:rec.mimeType||mime})); a.download=name;
+    document.body.appendChild(a); a.click(); a.remove();
+    msg.textContent=`Clip descargado: ${name}`;
+  };
+  // ir 3 s antes, esperar que cargue, grabar y reproducir
+  msg.textContent='Preparando…';
+  seekGps(ga-3);
+  if (ytReady){ try{ yt.pauseVideo(); }catch(e){} }
+  await new Promise(r=>setTimeout(r,1500));
+  rec.start(500); msg.textContent='● Grabando…';
+  if (ytReady){ try{ yt.playVideo(); }catch(e){} } else { playing=true; }
+  const stopAt=gb+2;
+  const iv=setInterval(()=>{
+    if (tNow>=stopAt || track.readyState==='ended'){
+      clearInterval(iv);
+      if (ytReady){ try{ yt.pauseVideo(); }catch(e){} } else { playing=false; }
+      if (rec.state!=='inactive') rec.stop();
+    }
+  },200);
+};
 
 $('mTitle').textContent=META.title||''; $('mSub').textContent=META.sub||'';
 drawPitch(); showSync(); select(0); refreshVis(); drawPeaks();
