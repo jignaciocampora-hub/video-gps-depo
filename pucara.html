@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Video + GPS · DEPO vs Pucará</title>
+<title>Campograma DEPO · vs Pucará</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Crect%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2214%22%20fill%3D%22%23cfe5d6%22/%3E%3Cg%20transform%3D%22rotate%28-35%2032%2032%29%22%3E%3Cellipse%20cx%3D%2232%22%20cy%3D%2232%22%20rx%3D%2222%22%20ry%3D%2213%22%20fill%3D%22%23e06a3b%22/%3E%3Cpath%20d%3D%22M14%2032h36%22%20stroke%3D%22%23fff%22%20stroke-width%3D%222.4%22/%3E%3Cpath%20d%3D%22M26%2028v8M30%2028v8M34%2028v8M38%2028v8%22%20stroke%3D%22%23fff%22%20stroke-width%3D%222.2%22%20stroke-linecap%3D%22round%22/%3E%3C/g%3E%3C/svg%3E">
 <style>
 :root{
   color-scheme:light;
@@ -866,7 +867,13 @@ $('wRec').onclick=async()=>{
     stream = await navigator.mediaDevices.getDisplayMedia({video:{frameRate:30}, audio:false, preferCurrentTab:true, selfBrowserSurface:'include', surfaceSwitching:'exclude'});
   }catch(e){ msg.textContent='Grabación cancelada.'; return; }
   const track=stream.getVideoTracks()[0];
-  try{ if (window.CropTarget && track.cropTo){ await track.cropTo(await CropTarget.fromElement(document.getElementById('topGrid'))); } }catch(e){}
+  // la zona a grabar (video + cancha) tiene que estar entera en pantalla: subir arriba de todo
+  const backY=window.scrollY;
+  window.scrollTo({top:0, behavior:'instant'});
+  await new Promise(r=>setTimeout(r,600));
+  const grid=document.getElementById('topGrid'), gr=grid.getBoundingClientRect();
+  if (gr.bottom > window.innerHeight + 2){ msg.textContent='La ventana es chica: se graba lo que entra en pantalla (achicá el zoom con Ctrl − para que entren video y cancha).'; }
+  try{ if (window.CropTarget && track.cropTo){ await track.cropTo(await CropTarget.fromElement(grid)); } }catch(e){}
   const types=['video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9','video/webm'];
   const mime=types.find(m=>MediaRecorder.isTypeSupported(m))||'';
   const rec=new MediaRecorder(stream, mime?{mimeType:mime, videoBitsPerSecond:6e6}:{});
@@ -880,6 +887,7 @@ $('wRec').onclick=async()=>{
     const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(chunks,{type:rec.mimeType||mime})); a.download=name;
     document.body.appendChild(a); a.click(); a.remove();
     msg.textContent=`Clip descargado: ${name}`;
+    window.scrollTo({top:backY, behavior:'instant'});
   };
   // ir 3 s antes, esperar que cargue, grabar y reproducir
   msg.textContent='Preparando…';
