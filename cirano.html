@@ -195,6 +195,16 @@ table.lc tr.grp td{font-weight:700;border-top:2px solid var(--border)}
   </table></div>
 </div>
 
+<div class="card" id="actCard" style="margin-top:14px">
+  <h2>Acciones de <span id="actName" style="text-transform:none;letter-spacing:0;color:var(--text)">—</span> <span class="r">elegí el jugador tocándolo en la cancha o en la tabla</span></h2>
+  <div class="row" style="margin-bottom:8px">
+    <div class="seg small" id="actKind"><button data-k="spr" class="on">Sprints</button><button data-k="hsr">HSR</button><button data-k="acc">Aceleraciones</button><button data-k="dec">Desaceleraciones</button></div>
+    <button id="actPlay" style="border-color:var(--accent-2);font-weight:600">▶ Ver todas seguidas</button><button id="actStop" style="display:none">⏹ Parar</button>
+    <span id="actMsg" class="lc-note" style="margin:0"></span>
+  </div>
+  <div class="tablewrap" style="max-height:320px;overflow:auto"><table class="lc"><thead><tr><th>#</th><th>Minuto</th><th>Duración</th><th>Distancia</th><th>Vel. máx</th><th>Acel. máx</th><th></th></tr></thead><tbody id="actBody"></tbody></table></div>
+</div>
+
 <div class="card" id="loadCard" style="margin-top:14px">
   <h2>Análisis de carga <span class="r">usa el filtro de grupo (Todos / FW / BK) y de tiempo (Partido / 1T / 2T)</span></h2>
   <div class="lc-grid">
@@ -271,8 +281,8 @@ const store = { get(k,d){ try{ const v=localStorage.getItem('vgps_'+k); return v
 const FILE_DEFAULTS = /*DEFAULTS*/{}/*END*/;
 const OFF2_DEFAULT = (META.vk2!=null) ? Math.round(META.vk2 - (VK1_DEFAULT + (D.kick2 - D.kick1))) : 0;   // corte del video en el entretiempo
 const BASE = () => Object.assign({corr:[], vk1:VK1_DEFAULT, off2:OFF2_DEFAULT, dx:0, dy:0, rot:0, flip:false, mirror:false, grp:{}, hide:[], gview:'all'}, JSON.parse(JSON.stringify(FILE_DEFAULTS)));
-const FILE_KEY = (META.slug && META.slug!=='pucara' ? META.slug+'_v5_' : '') + 'settings2_' + JSON.stringify(FILE_DEFAULTS);   // un juego de ajustes por partido   // si cambia el archivo, se descartan ajustes viejos del navegador
-let S = Object.assign(BASE(), store.get(FILE_KEY, (Object.keys(FILE_DEFAULTS).length || (META.slug && META.slug!=='pucara')) ? {} : store.get('settings2',{})));  // conserva ajustes de la versión anterior
+const FILE_KEY = (META.slug ? META.slug+'_v6_' : '') + 'settings2_' + JSON.stringify(FILE_DEFAULTS);   // un juego de ajustes por partido   // si cambia el archivo, se descartan ajustes viejos del navegador
+let S = Object.assign(BASE(), store.get(FILE_KEY, (Object.keys(FILE_DEFAULTS).length || META.slug) ? {} : store.get('settings2',{})));  // conserva ajustes de la versión anterior
 const save = () => store.set(FILE_KEY, S);
 
 // ---------- mapeo video <-> GPS ----------
@@ -350,6 +360,7 @@ function drawPitch(){
     L(xa,-4.6,xb,-7.4,.7); L(xa,6.2,xb,3.4,.7);
     const xm=s*54.75; L(xm,-6.0,xm,4.8,.7);
   });
+  pitch.evt = el('polyline',{fill:'none',stroke:'#ffe14d','stroke-width':1.1,'stroke-linecap':'round','stroke-linejoin':'round',opacity:.95},pitch);
   pitch.trail = el('polyline',{fill:'none',stroke:'#ffb347','stroke-width':.6,'stroke-linecap':'round','stroke-linejoin':'round',opacity:.9},pitch);
   pitch.dots = P.map((p,i)=>{
     const g = el('g',{style:'cursor:pointer'},pitch);
@@ -435,6 +446,7 @@ function drawTimeline(){
   for (let i=iA;i<=iB;i+=step){ if(!p.on[i]){pen=false;continue;} dl+=(pen?'L':'M')+tx(T0+i).toFixed(1)+','+ty(p.mpm[i]).toFixed(1); pen=true; }
   el('path',{d:dl,fill:'none',stroke:'var(--accent-2)','stroke-width':2,'stroke-linejoin':'round'},tl);
   tl.hover = el('line',{y1:PADT,y2:TH-PADB,stroke:'var(--muted)','stroke-width':1,'stroke-dasharray':'3 3',display:'none'},tl);
+  tl.evts = el('g',{},tl); drawActMarks();
   tl.win = el('rect',{y:PADT,height:TH-PADT-PADB,fill:'var(--accent-2)',opacity:.22,display:'none'},tl);
   if (typeof WIN!=='undefined' && WIN) drawWin();
   tl.head = el('line',{y1:PADT-2,y2:TH-PADB,stroke:'var(--text)','stroke-width':1.5},tl);
@@ -483,6 +495,7 @@ function select(i){
   sel=i; P.forEach((p,j)=>p.tr.classList.toggle('sel',j===i)); applyLabels();
   pitch.appendChild(pitch.dots[i]);
   $('selTitle').textContent=P[i].name; drawTimeline(); render(tNow,true);
+  if (typeof drawActs==='function') drawActs();
 }
 
 // ---------- filtro por tiempo ----------
@@ -505,7 +518,7 @@ function setPeriod(p){
   else { VA=T0; VB=TEND; }
   $('tblTitle').textContent = p==='all' ? 'Jugadores — acumulado del partido hasta este momento'
                             : `Jugadores — solo ${p==='1'?'1er':'2do'} tiempo`;
-  drawTimeline(); if (typeof drawPeaks==='function') drawPeaks();
+  drawTimeline(); if (typeof drawPeaks==='function') drawPeaks(); if (typeof drawActs==='function') drawActs();
   // si el video está fuera del tiempo elegido, lo lleva al kickoff de ese tiempo
   if (p==='1' && (tNow < D.kick1-60 || tNow > END1+30)) seekGps(D.kick1-3);
   else if (p==='2' && tNow < D.kick2-60) seekGps(D.kick2-3);
@@ -568,6 +581,7 @@ function render(tg, force){
   });
   const p=P[sel]; let pts=''; if (isVis(p)) for (let k=8*HZ;k>=0;k-=2){ const [x,y]=pos(p,tNow-k/HZ); const [X,Y]=xf(x,y); pts+=X.toFixed(2)+','+Y.toFixed(2)+' '; }
   pitch.trail.setAttribute('points', p.on[i1] ? pts : '');
+  if (typeof drawActPath==='function') drawActPath(p);
   tl.head.setAttribute('x1',tx(tNow)); tl.head.setAttribute('x2',tx(tNow)); tl.head.setAttribute('display', tNow>=VA&&tNow<=VB?'':'none');
   const q4=Math.floor(tNow*4);
   if (q4!==lastFast || force){
@@ -884,8 +898,74 @@ $('wRec').onclick=async()=>{
   },200);
 };
 
+
+// ================= ACCIONES DEL JUGADOR (sprints / HSR / ACC / DEC) =================
+let ACT = {k:'spr'}, ACT_CACHE = {}, ACT_Q = null;
+const ACT_LBL = {spr:'sprints', hsr:'esfuerzos HSR', acc:'aceleraciones', dec:'desaceleraciones'};
+function actEvents(p, k){
+  const key=p.name+'|'+k; if (ACT_CACHE[key]) return ACT_CACHE[key];
+  const th=D.thresholds, v=p.v, n=v.length, dt=1/HZ;
+  // aceleración (m/s²) a partir de la velocidad suavizada
+  const vs=new Float32Array(n); for (let i=0;i<n;i++){ let s=0,c=0; for (let j=i-1;j<=i+1;j++) if (j>=0&&j<n){ s+=v[j]; c++; } vs[i]=s/c/100; }
+  const acc=new Float32Array(n); for (let i=1;i<n-1;i++) acc[i]=(vs[i+1]-vs[i-1])/(2*dt);
+  const cond = i => k==='spr' ? v[i]/100>th.spr : k==='hsr' ? v[i]/100>th.hsr : k==='acc' ? acc[i]>th.acc : acc[i]<-th.acc;
+  const minDur = (k==='acc'||k==='dec') ? 0.5 : 1.0;
+  const ev=[]; let s=-1, gap=0;
+  for (let i=0;i<=n;i++){
+    const on = i<n && cond(i) && inPlay(T0+i/HZ, T0+i/HZ) && p.on[idx(T0+i/HZ)];
+    if (on){ if (s<0) s=i; gap=0; }
+    else if (s>=0){ gap++; if (gap>0 || i===n){ const e=i-gap; if ((e-s+1)*dt>=minDur) ev.push([s,e]); s=-1; gap=0; } }
+  }
+  const out = ev.map(([a,b])=>{
+    let d=0, vm=0, am=0; for (let i=a;i<=b;i++){ d+=v[i]/100*dt; if (v[i]>vm) vm=v[i]; const aa=Math.abs(acc[i]); if (aa>am) am=aa; }
+    return {a:T0+a/HZ, b:T0+b/HZ, dur:(b-a+1)*dt, d, vm:vm*0.036, am, ia:a, ib:b};
+  });
+  ACT_CACHE[key]=out; return out;
+}
+function actList(){ const p=P[sel], [ra,rb]=perRange(); return actEvents(p, ACT.k).filter(e=>e.a>=ra && e.b<=rb); }
+function drawActs(){
+  const p=P[sel]; $('actName').textContent=p.name;
+  const L=actList();
+  $('actMsg').textContent = `${L.length} ${ACT_LBL[ACT.k]}` + (PER!=='all' ? ` en el ${PER}T` : ' en el partido');
+  $('actBody').innerHTML = L.length ? L.map((e,i)=>`<tr class="pk" data-i="${i}"><td>${i+1}</td><td>${minLabel(e.a)}</td><td>${e.dur.toFixed(1)} s</td><td>${Math.round(e.d)} m</td><td><b>${e.vm.toFixed(1)}</b> km/h</td><td>${e.am.toFixed(1)} m/s²</td><td><button class="go">▶ ver</button></td></tr>`).join('')
+    : `<tr><td colspan="7" style="color:var(--muted)">Sin ${ACT_LBL[ACT.k]} para este jugador${PER!=='all'?' en este tiempo':''}</td></tr>`;
+  document.querySelectorAll('#actBody tr.pk').forEach(r=>r.onclick=()=>{ actStop(); const e=L[+r.dataset.i]; setWin(e.a-2, e.b+2); seekGps(e.a-3); if (ytReady){ try{ yt.playVideo(); }catch(_){} } else playing=true; hlAct(+r.dataset.i); });
+  drawActMarks();
+}
+function hlAct(i){ document.querySelectorAll('#actBody tr.pk').forEach(r=>r.classList.toggle('act', +r.dataset.i===i)); }
+function drawActMarks(){
+  if (!tl || !tl.evts) return; tl.evts.innerHTML='';
+  const L=actEvents(P[sel], ACT.k);
+  for (const e of L){ if (e.b<VA || e.a>VB) continue;
+    el('rect',{x:tx(e.a), y:TH-PADB-6, width:Math.max(2,tx(e.b)-tx(e.a)), height:6, fill:'#d4a017', rx:1},tl.evts); }
+}
+// en la cancha: el recorrido de la acción en amarillo mientras ocurre (y 3 s después)
+function drawActPath(p){
+  const L=actEvents(p, ACT.k), e=L.find(x=>tNow>=x.a-0.2 && tNow<=x.b+3);
+  if (!e){ pitch.evt.setAttribute('points',''); return; }
+  const end=Math.min(e.ib, Math.floor((tNow-T0)*HZ)); let pts='';
+  for (let i=e.ia;i<=end;i++){ const [X,Y]=xf(p.x[i]/10, p.y[i]/10); pts+=X.toFixed(2)+','+Y.toFixed(2)+' '; }
+  pitch.evt.setAttribute('points', pts);
+}
+// ver todas seguidas
+function actStop(){ ACT_Q=null; $('actStop').style.display='none'; $('actPlay').style.display=''; }
+$('actPlay').onclick=()=>{
+  const L=actList(); if (!L.length) return;
+  ACT_Q={L, i:0}; $('actStop').style.display=''; $('actPlay').style.display='none'; actGo();
+};
+$('actStop').onclick=()=>{ actStop(); if (ytReady){ try{ yt.pauseVideo(); }catch(e){} } else playing=false; };
+function actGo(){
+  if (!ACT_Q) return; const e=ACT_Q.L[ACT_Q.i];
+  setWin(e.a-2, e.b+2); seekGps(e.a-3); hlAct(ACT_Q.i);
+  $('actMsg').textContent=`Reproduciendo ${ACT_Q.i+1} de ${ACT_Q.L.length}`;
+  if (ytReady){ try{ yt.playVideo(); }catch(_){} } else playing=true;
+}
+setInterval(()=>{ if (!ACT_Q) return; const e=ACT_Q.L[ACT_Q.i];
+  if (tNow >= e.b+2){ ACT_Q.i++; if (ACT_Q.i>=ACT_Q.L.length){ actStop(); if (ytReady){ try{ yt.pauseVideo(); }catch(_){} } else playing=false; drawActs(); } else actGo(); } }, 200);
+document.querySelectorAll('#actKind button').forEach(b=>b.onclick=()=>{ ACT.k=b.dataset.k; document.querySelectorAll('#actKind button').forEach(x=>x.classList.toggle('on',x===b)); actStop(); drawActs(); render(tNow,true); });
+
 $('mTitle').textContent=META.title||''; $('mSub').textContent=META.sub||'';
-drawPitch(); showSync(); select(0); refreshVis(); drawPeaks();
+drawPitch(); showSync(); select(0); refreshVis(); drawPeaks(); drawActs();
 $('lblBtn').onclick=()=>{ labelMode = labelMode==='code'?'name':'code'; store.set('labels',labelMode); applyLabels(); }; requestAnimationFrame(loop);
 </script>
 </body>
