@@ -250,6 +250,8 @@ table.lc tr.grp td{font-weight:700;border-top:2px solid var(--border)}
       <p>La cancha se estima a partir de los datos. Con más jugadores queda más precisa; si se ve corrida, ajustá acá.</p>
       <div class="row"><span class="val">Largo</span><button data-f="dx" data-d="-5">◀ 5 m</button><button data-f="dx" data-d="-1">◀ 1 m</button><button data-f="dx" data-d="1">1 m ▶</button><button data-f="dx" data-d="5">5 m ▶</button><span class="fv" id="fdx"></span></div>
       <div class="row"><span class="val">Ancho</span><button data-f="dy" data-d="-5">▲ 5 m</button><button data-f="dy" data-d="-1">▲ 1 m</button><button data-f="dy" data-d="1">1 m ▼</button><button data-f="dy" data-d="5">5 m ▼</button><span class="fv" id="fdy"></span></div>
+      <div class="row"><span class="val">Medida largo</span><button data-m2="fl" data-d="-1">− 1 m</button><button data-m2="fl" data-d="1">+ 1 m</button><span class="fv" id="ffl"></span></div>
+      <div class="row"><span class="val">Medida ancho</span><button data-m2="fw" data-d="-1">− 1 m</button><button data-m2="fw" data-d="1">+ 1 m</button><span class="fv" id="ffw"></span></div>
       <div class="row"><span class="val">Giro</span><button data-f="rot" data-d="-1">↺ 1°</button><button data-f="rot" data-d="1">↻ 1°</button><span class="fv" id="frot"></span></div>
       <div class="row"><span class="val"></span><button id="flip">Girar 180°</button><button id="mirror">Espejo arriba/abajo</button></div>
       <div class="row"><button id="bakeBtn" style="border-color:var(--accent-2);font-weight:600">💾 Guardar en el archivo</button><button id="resetAll">Restablecer todo</button></div>
@@ -283,7 +285,7 @@ const store = { get(k,d){ try{ const v=localStorage.getItem('vgps_'+k); return v
 // Ajustes guardados dentro del archivo (los escribe el botón «Guardar en el archivo»)
 const FILE_DEFAULTS = /*DEFAULTS*/{}/*END*/;
 const OFF2_DEFAULT = (META.vk2!=null) ? Math.round(META.vk2 - (VK1_DEFAULT + (D.kick2 - D.kick1))) : 0;   // corte del video en el entretiempo
-const BASE = () => Object.assign({corr:[], vk1:VK1_DEFAULT, off2:OFF2_DEFAULT, dx:0, dy:0, rot:0, flip:false, mirror:false, grp:{}, hide:[], gview:'all'}, JSON.parse(JSON.stringify(FILE_DEFAULTS)));
+const BASE = () => Object.assign({fl:(META.pitch||[100,70])[0], fw:(META.pitch||[100,70])[1], corr:[], vk1:VK1_DEFAULT, off2:OFF2_DEFAULT, dx:0, dy:0, rot:0, flip:false, mirror:false, grp:{}, hide:[], gview:'all'}, JSON.parse(JSON.stringify(FILE_DEFAULTS)));
 const FILE_KEY = (META.slug ? META.slug+'_v6_' : '') + 'settings2_' + JSON.stringify(FILE_DEFAULTS);   // un juego de ajustes por partido   // si cambia el archivo, se descartan ajustes viejos del navegador
 let S = Object.assign(BASE(), store.get(FILE_KEY, (Object.keys(FILE_DEFAULTS).length || META.slug) ? {} : store.get('settings2',{})));  // conserva ajustes de la versión anterior
 const save = () => store.set(FILE_KEY, S);
@@ -306,7 +308,19 @@ function baseG(tv){
   return a[1] + (tv-a[0]) * (b[1]-a[1]) / (b[0]-a[0]);
 }
 // Correcciones del usuario: cada una suma «d» segundos desde el segundo «v» del video hasta el final de ese tiempo
-function corrAt(tv){ let s=0, h=halfOf(tv); for (const c of (S.corr||[])) if (c.v<=tv && halfOf(c.v)===h) s+=c.d; return s; }
+// Las correcciones se acumulan; antes de cada punto se entra con una rampa suave (sin saltos ni «repeticiones»):
+// la rampa dura al menos 20 s y 4 s por cada segundo corregido, sin pasar el punto anterior.
+function corrAt(tv){
+  const h=halfOf(tv), pts=(S.corr||[]).filter(c=>halfOf(c.v)===h).sort((a,b)=>a.v-b.v);
+  let C=0, prevV=-Infinity;
+  for (const c of pts){
+    const C2=C+c.d, R=Math.min(Math.max(20, 4*Math.abs(c.d)), c.v-prevV);
+    if (tv < c.v - R) return C;
+    if (tv < c.v) return C + (C2-C) * (tv-(c.v-R))/R;
+    C=C2; prevV=c.v;
+  }
+  return C;
+}
 function v2g(tv){ return baseG(tv) + corrAt(tv); }
 function g2v(tg){ let tv = tg - (SYNC[0][1]-SYNC[0][0]); if (tg >= (D.end1 + D.kick2)/2) tv = tg - (SYNC[2][1]-SYNC[2][0]);
   for (let i=0;i<6;i++) tv += tg - v2g(tv); return tv; }
@@ -349,21 +363,23 @@ function drawPitch(){
   el('rect',{x:-62,y:-40,width:124,height:80,fill:'#245c36'},pitch);
   for (let k=0;k<26;k++) el('rect',{x:-65+k*5,y:-40,width:5,height:80,fill:k%2?'#2c6e40':'#33794a'},pitch);
   const L = (x1,y1,x2,y2,w,dash) => el('line',{x1,y1,x2,y2,stroke:W,'stroke-width':w||.45,'stroke-dasharray':dash||'','stroke-linecap':'butt'},pitch);
-  el('rect',{x:-61.2,y:-36.2,width:122.4,height:72.4,fill:'none',stroke:W,'stroke-width':.25,opacity:.8},pitch);  // borde exterior
-  el('rect',{x:-60,y:-35,width:120,height:70,fill:'none',stroke:W,'stroke-width':.55},pitch);            // pelota muerta + laterales
-  [-50,50,-28,28,0].forEach(x=>L(x,-35,x,35,.45));                                                        // try, 22, mitad
-  [-45,45,-10,10].forEach(x=>L(x,-35,x,35,.4,'2.4 4.2'));                                                  // 5 m y 10 m discontinuas
+  // medidas reales de la cancha (try a try y ancho), ajustables
+  const H=(S.fl||100)/2, Wd=(S.fw||70)/2, G=Math.min(10,62-H-1);
+  el('rect',{x:-H-G-1.2,y:-Wd-1.2,width:2*(H+G)+2.4,height:2*Wd+2.4,fill:'none',stroke:W,'stroke-width':.25,opacity:.8},pitch);  // borde exterior
+  el('rect',{x:-H-G,y:-Wd,width:2*(H+G),height:2*Wd,fill:'none',stroke:W,'stroke-width':.55},pitch);          // pelota muerta + laterales
+  const X22=H-22;
+  [-H,H,-X22,X22,0].forEach(x=>L(x,-Wd,x,Wd,.45));                                                           // try, 22, mitad
+  [-(H-5),H-5,-10,10].forEach(x=>L(x,-Wd,x,Wd,.4,'2.4 4.2'));                                                // 5 m y 10 m discontinuas
   // marcas de 5 m y 15 m desde el lateral sobre cada línea
-  [-30,-20,20,30].forEach(y=>{
-    [-28,-10,0,10,28].forEach(x=>L(x-1.2,y,x+1.2,y,.4));
-    L(-45,y,-43.6,y,.4); L(45,y,43.6,y,.4);
+  [-(Wd-5),-(Wd-15),Wd-15,Wd-5].forEach(y=>{
+    [-X22,-10,0,10,X22].forEach(x=>L(x-1.2,y,x+1.2,y,.4));
+    L(-(H-5),y,-(H-6.4),y,.4); L(H-5,y,H-6.4,y,.4);
   });
-  [-50,50].forEach(x=>{ L(x+(x<0?0:-1.6),-30,x+(x<0?1.6:0),-30,.4); });
   // postes (H)
   [-1,1].forEach(s=>{
-    const xa=s*58, xb=s*51.5;
+    const xa=s*(H+Math.min(8,G-0.5)), xb=s*(H+1.5);
     L(xa,-4.6,xb,-7.4,.7); L(xa,6.2,xb,3.4,.7);
-    const xm=s*54.75; L(xm,-6.0,xm,4.8,.7);
+    const xm=(xa+xb)/2; L(xm,-6.0,xm,4.8,.7);
   });
   pitch.evt = el('polyline',{fill:'none',stroke:'#ffe14d','stroke-width':1.1,'stroke-linecap':'round','stroke-linejoin':'round',opacity:.95},pitch);
   pitch.trail = el('polyline',{fill:'none',stroke:'#ffb347','stroke-width':.6,'stroke-linecap':'round','stroke-linejoin':'round',opacity:.9},pitch);
@@ -626,6 +642,7 @@ function currentVideoTime(){
 let scrubUntil = 0, scrubTimer = null;
 let adjMode=false, adjV=null;
 function adjustAnim(sec){                       // corre solo la animación: suma una corrección desde este momento del video
+  if (ytReady){ try{ if (yt.getPlayerState()===1){ $('syncHint').textContent='Pausá el video para ajustar la animación.'; return; } }catch(e){} }
   const yv=(ytReady && typeof currentVideoTime==='function') ? currentVideoTime() : null;
   const tv = yv!=null ? yv : (adjV!=null ? adjV : curVideo()); S.corr=S.corr||[];
   let c=S.corr.find(x=>Math.abs(x.v - tv) < 3 && halfOf(x.v)===halfOf(tv));
@@ -682,7 +699,7 @@ window.onYouTubeIframeAPIReady=function(){
   yt=new YT.Player('yt',{videoId:VIDEO_ID,playerVars:{start:Math.floor(SYNC[0][0]),rel:0,modestbranding:1,playsinline:1},
     events:{onReady:()=>{ytReady=true; clearTimeout(ytFail);},
             onPlaybackRateChange:e=>{ytRate=e.data;},
-            onStateChange:e=>{ setOverlay(e.data!==1 && e.data!==3); },
+            onStateChange:e=>{ setOverlay(e.data!==1 && e.data!==3); if (e.data===1 && adjMode) $('adjBtn').click(); },
             onError:e=>fallback(e.data===153||e.data===152?FILE_MSG:null)}});
 };
 function fallback(msg){ ytReady=false; if(msg) $('novideo').innerHTML=msg; $('novideo').style.display='flex'; $('yt').style.display='none'; $('mbar').style.display='flex'; }
@@ -719,7 +736,8 @@ $('syncUndo').onclick=()=>{ const st=store.get(FILE_KEY,null); S.corr = st && st
 $('syncReset').onclick=()=>{ S.corr=[]; syncDirty=true; showSync(); render(v2g(curVideo()),true); };
 setInterval(()=>{ try{ showSync(); }catch(e){} }, 500);
 $('goto2').onclick=()=>seekGps(D.kick2-5);
-function showField(){ const f=v=>(v>0?'+':'')+v; $('fdx').textContent=f(S.dx)+' m'; $('fdy').textContent=f(S.dy)+' m'; $('frot').textContent=f(S.rot)+'°'; }
+function showField(){ const f=v=>(v>0?'+':'')+v; $('ffl').textContent=(S.fl||100)+' m (try a try)'; $('ffw').textContent=(S.fw||70)+' m'; $('fdx').textContent=f(S.dx)+' m'; $('fdy').textContent=f(S.dy)+' m'; $('frot').textContent=f(S.rot)+'°'; }
+document.querySelectorAll('[data-m2]').forEach(b=>b.onclick=()=>{ const k=b.dataset.m2; S[k]=Math.max(60,Math.min(k==='fl'?100:75,(S[k]||(k==='fl'?100:70))+(+b.dataset.d))); save(); showField(); drawPitch(); P.forEach(p=>p.dotOn=null); applyLabels(); pitch.appendChild(pitch.dots[sel]); render(tNow,true); });
 document.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{ S[b.dataset.f]+=+b.dataset.d; save(); showField(); render(tNow,true); });
 $('flip').onclick=()=>{ S.flip=!S.flip; save(); render(tNow,true); };
 $('mirror').onclick=()=>{ S.mirror=!S.mirror; save(); render(tNow,true); };
